@@ -177,7 +177,11 @@ void setup() {
   }
 
   if ((imageCount = countFile(SD, "/inits")) == -1){
+    Serial.println("Error when counting images in /inits");
     return;
+  }
+  else{
+    Serial.printf("Already %d images in /inits\n", imageCount);
   }
 
   sd_sign = true; // sd initialization check passes
