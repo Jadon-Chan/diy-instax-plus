@@ -47,6 +47,42 @@ void writeFile(fs::FS &fs, const char * path, uint8_t * data, size_t len){
     file.close();
 }
 
+// SD card create directory
+bool createDir(fs::FS &fs, const char * path){
+  Serial.printf("Creating Dir: %s\n", path);
+  if (fs.mkdir(path)){
+    Serial.println("Directory created");
+    return true;
+  }
+  else {
+    Serial.println("Mkdir failed");
+    return false;
+  }
+}
+
+// SD card count # files in a directory with depth 1
+int countFile(fs::FS &fs, const char * path){
+  Serial.printf("Counting Dir: %s\n", path);
+  int ret = 0;
+
+  File root = fs.open(path);
+
+  if(!root){
+      Serial.println("Failed to open directory");
+      return -1;
+  }
+  if(!root.isDirectory()){
+      Serial.println("Not a directory");
+      return -1;
+  }
+
+  File file;
+  while(file = root.openNextFile()){
+    ret++;
+  }
+  return ret;
+}
+
 void setup() {
   Serial.begin(115200);
   while(!Serial); // When the serial monitor is turned on, the program starts to execute
@@ -54,6 +90,7 @@ void setup() {
   // initialize the pushbutton pin as an input:
   pinMode(buttonPin, INPUT_PULLUP);
 
+  // set up camera
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
@@ -134,9 +171,18 @@ void setup() {
     Serial.println("UNKNOWN");
   }
 
+  // create SD file structure
+  if (!createDir(SD, "/inits") || !createDir(SD, "/results")){
+    return;
+  }
+
+  if ((imageCount = countFile(SD, "/inits")) == -1){
+    return;
+  }
+
   sd_sign = true; // sd initialization check passes
 
-  Serial.println("Photos will begin in one minute, please be ready.");
+  Serial.println("DIY Instax Plus is ready for use! Enjoy it!");
 }
 
 int currButtonState;
