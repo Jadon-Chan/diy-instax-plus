@@ -2,15 +2,38 @@
 #include "FS.h"
 #include "SD.h"
 #include "SPI.h"
+#include "WiFi.h"
 
 #define CAMERA_MODEL_XIAO_ESP32S3 // Has PSRAM
 
 #include "camera_pins.h"
 
+// Replace with your network credentials
+const char* ssid = "SSID";
+const char* password = "PASSWORD";
+
+void WiFiConnect(void){
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+
+  while (WiFi.status() != WL_CONNECTED) {
+      delay(500);
+      Serial.print(".");
+  }
+
+  Serial.println("");
+  Serial.println("WiFi connected!");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+}
+
 unsigned long lastCaptureTime = 0; // Last shooting time
 int imageCount = 0;                // File Counter
 bool camera_sign = false;          // Check camera status
 bool sd_sign = false;              // Check sd status
+bool wifi_sign = false;              // Check sd status
 const int buttonPin = D1;
 
 // Save pictures to SD card
@@ -186,7 +209,13 @@ void setup() {
 
   sd_sign = true; // sd initialization check passes
 
-  Serial.println("DIY Instax Plus is ready for use! Enjoy it!");
+  WiFiConnect();
+
+  wifi_sign = true; // wifi initailization check passes
+
+  if (camera_sign && sd_sign && wifi_sign){
+    Serial.println("DIY Instax Plus is ready for use! Enjoy it!");
+  }
 }
 
 int currButtonState;
@@ -194,7 +223,7 @@ int prevButtonState;
 
 void loop() {
   // Camera & SD available, start checking button state
-  if (camera_sign && sd_sign){
+  if (camera_sign && sd_sign && wifi_sign){
     currButtonState = digitalRead(buttonPin);
     // when button is pressed, take a photo and save it in SD card.
     if (currButtonState == LOW && prevButtonState == HIGH){
