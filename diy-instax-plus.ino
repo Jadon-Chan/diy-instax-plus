@@ -3,6 +3,7 @@
 #include "SD.h"
 #include "SPI.h"
 #include "WiFi.h"
+#include "HTTPClient.h"
 
 #define CAMERA_MODEL_XIAO_ESP32S3 // Has PSRAM
 
@@ -12,6 +13,48 @@
 const char* ssid = "SSID";
 const char* password = "PASSWORD";
 
+unsigned long lastCaptureTime = 0; // Last shooting time
+int imageCount = 0;                // File Counter
+bool camera_sign = false;          // Check camera status
+bool sd_sign = false;              // Check sd status
+bool wifi_sign = false;             // Check sd status
+const int buttonPin = D1;          // Pin connected with board button
+
+HTTPClient http;
+char img2img_server[] = "http://101.6.161.43:8000";
+
+// avail API of img2img_server
+bool avail(){
+  int httpCode;
+  Serial.println("Sending GET to avail API");
+  if (http.begin(String(img2img_server) + "/avail")) {
+    httpCode = http.GET();
+  }
+  else {
+    Serial.println("[HTTP] Unable to connect");
+    delay(1000);
+  }
+  String payload = http.getString();
+  
+  if (httpCode == HTTP_CODE_OK) {
+    int dataStart = payload.indexOf("{\"available\":") + strlen("{\"available\":");
+    int dataEnd = payload.indexOf("}");
+    String avail = payload.substring(dataStart, dataEnd);
+    Serial.printf("Call avail succeed! availability is %s\n", avail);
+    if (avail == "true"){
+      return true;
+    }
+    else{
+      return false;
+    }
+  }
+  else {
+    Serial.printf("Call avail failed... return code: %d\n", httpCode);
+    return false;
+  }
+}
+
+// WiFi Connection
 void WiFiConnect(void){
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
@@ -28,13 +71,6 @@ void WiFiConnect(void){
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 }
-
-unsigned long lastCaptureTime = 0; // Last shooting time
-int imageCount = 0;                // File Counter
-bool camera_sign = false;          // Check camera status
-bool sd_sign = false;              // Check sd status
-bool wifi_sign = false;              // Check sd status
-const int buttonPin = D1;
 
 // Save pictures to SD card
 void photo_save(const char * fileName) {
@@ -232,6 +268,7 @@ void loop() {
       photo_save(filename);
       Serial.printf("Saved picture: %s\r\n", filename);
       imageCount++;
+      avail();
     }
     prevButtonState = currButtonState;
   }
