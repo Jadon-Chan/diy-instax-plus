@@ -1,3 +1,5 @@
+#define USE_TFT_ESPI_LIBRARY
+
 #include "esp_camera.h"
 #include "FS.h"
 #include "SD.h"
@@ -6,20 +8,47 @@
 #include <TFT_eSPI.h>
 #include "HTTPClient.h"
 #include "esp_http_client.h"
+#include <lvgl.h>
+#include "lv_xiao_round_screen.h"
+#include <malloc.h>
+#include <TJpg_Decoder.h>
 
 #define CAMERA_MODEL_XIAO_ESP32S3 // Has PSRAM
 
 #include "camera_pins.h"
 
+#define SCREEN_WIDTH 240
+#define SCREEN_HEIGHT 240
+
 #define SD_CS_PIN 21 // ESP32S3 Sense SD Card Reader
 // #define SD_CS_PIN D2 // XIAO Round Display SD Card Reader
+#define CHSC6X_I2C_ID 0x2e
+#define CHSC6X_READ_POINT_LEN 5
 #define TOUCH_INT D7
+
+#define BUTTON_WIDTH_LARGE 80
+
+#define BUTTON_WIDTH_SMALL 40
+
+#define BUTTON_HEIGHT 40
+
+#define CENTER 120
+
+#define BAR_1 60
+
+#define BAR_2 120
+
+#define BAR_3 180
+
+#define minimum(a,b)     (((a) < (b)) ? (a) : (b))
 
 typedef enum
 {
   MAIN_PAGE,
-  RESULTS,
-  INITS,
+  RESULTS_INIT,
+  RESULTS_LISTEN,
+  INITS_INIT,
+  INITS_LISTEN,
   TAKE_PHOTO,
   CONFIRM_SEND,
   WAIT_SERVER,
@@ -44,9 +73,26 @@ HTTPClient http;
 const char img2img_server[] = "http://101.6.161.43:8000";
 const char host[] = "101.6.161.43";
 
-TFT_eSPI tft = TFT_eSPI();
+int curr_num_inits = 0;
+int curr_num_results = 0;
 
-state_t state = TAKE_PHOTO;
+state_t state = MAIN_PAGE;
+state_t last_state = INITS_INIT;
+
+bool tft_output(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t* bitmap)
+{
+   // Stop further decoding as image is running off bottom of screen
+  if ( y >= tft.height() ) return 0;
+
+  // This function will clip the image block rendering automatically at the TFT boundaries
+  tft.pushImage(x, y, w, h, bitmap);
+
+  // This might work instead if you adapt the sketch to use the Adafruit_GFX library
+  // tft.drawRGBBitmap(x, y, bitmap, w, h);
+
+  // Return 1 to decode next block
+  return 1;
+}
 
 // avail API of img2img_server
 bool avail()
@@ -272,25 +318,24 @@ void writeFile(fs::FS &fs, const char *path, uint8_t *data, size_t len)
 }
 
 // SD card read file
-void readFile(fs::FS &fs, const char *path, uint8_t *data, size_t len)
+int32_t readFile(fs::FS &fs, const char *path, uint8_t *data)
 {
-  Serial.printf("Reading file: %s\r\n", path);
+    Serial.printf("Reading file: %s\n", path);
 
-  File file = fs.open(path, FILE_READ);
-  if (!file)
-  {
-    Serial.println("Failed to open file for reading");
-    return;
-  }
-  if (file.read(data, len) == len)
-  {
-    Serial.println("File read");
-  }
-  else
-  {
-    Serial.println("Read failed");
-  }
-  file.close();
+    File file = fs.open(path);
+    if(!file){
+        Serial.println("Failed to open file for reading");
+        return -1;
+    }
+
+    Serial.print("Read from file: ");
+    int32_t index = 0;
+    while(file.available()){
+        data[index++] = file.read();
+    }
+    file.close();
+
+    return index;
 }
 
 // SD card create directory
@@ -409,9 +454,14 @@ void setup()
   camera_sign = true; // Camera initialization check passes
 
   // Display initialization
-  tft.init();
-  tft.setRotation(1);
-  tft.fillScreen(TFT_WHITE);
+  lv_init();
+  lv_xiao_disp_init();
+  lv_xiao_touch_init();
+  tft.setSwapBytes(true);
+
+  // Jpeg decoder
+  TJpgDec.setJpgScale(1);
+  TJpgDec.setCallback(tft_output);
 
   // Initialize SD card
   if (!SD.begin(SD_CS_PIN))
@@ -474,9 +524,113 @@ void setup()
   }
 }
 
-void main_page()
+static void shot_btn_event_cb(lv_event_t * e)
 {
-  return;
+  lv_event_code_t code = lv_event_get_code(e);
+  if (code == LV_EVENT_CLICKED){
+    Serial.println("SHOT button is pressed");
+    state = TAKE_PHOTO;
+  }
+}
+
+static void results_btn_event_cb(lv_event_t * e)
+{
+  lv_event_code_t code = lv_event_get_code(e);
+  if (code == LV_EVENT_CLICKED){
+    Serial.println("RESULTS button is pressed");
+    state = RESULTS;
+  }
+}
+
+static void inits_btn_event_cb(lv_event_t * e)
+{
+  lv_event_code_t code = lv_event_get_code(e);
+  if (code == LV_EVENT_CLICKED){
+    Serial.println("INITS button is pressed");
+    state = INITS_INIT;
+  }
+}
+
+void main_page_init()
+{
+  // shot button
+  lv_obj_t * shot_btn = lv_btn_create(lv_scr_act());     /*Add a button the current screen*/
+  lv_obj_set_pos(shot_btn, CENTER-BUTTON_WIDTH_LARGE/2, BAR_1-BUTTON_HEIGHT/2);                            /*Set its position*/
+  lv_obj_set_size(shot_btn, BUTTON_WIDTH_LARGE, BUTTON_HEIGHT);                          /*Set its size*/
+  lv_obj_add_event_cb(shot_btn, shot_btn_event_cb, LV_EVENT_ALL, NULL);           /*Assign a callback to the button*/
+
+  lv_obj_t * shot_label = lv_label_create(shot_btn);          /*Add a label to the button*/
+  lv_label_set_text(shot_label, "SHOT");                     /*Set the labels text*/
+  lv_obj_center(shot_label);
+
+  // results button
+  lv_obj_t * results_btn = lv_btn_create(lv_scr_act());     /*Add a button the current screen*/
+  lv_obj_set_pos(results_btn, CENTER-BUTTON_WIDTH_LARGE/2, BAR_2-BUTTON_HEIGHT/2);                            /*Set its position*/
+  lv_obj_set_size(results_btn, BUTTON_WIDTH_LARGE, BUTTON_HEIGHT);                          /*Set its size*/
+  lv_obj_add_event_cb(results_btn, results_btn_event_cb, LV_EVENT_ALL, NULL);           /*Assign a callback to the button*/
+
+  lv_obj_t * results_label = lv_label_create(results_btn);          /*Add a label to the button*/
+  lv_label_set_text(results_label, "RESULTS");                     /*Set the labels text*/
+  lv_obj_center(results_label);
+
+  // inits button
+  lv_obj_t * inits_btn = lv_btn_create(lv_scr_act());     /*Add a button the current screen*/
+  lv_obj_set_pos(inits_btn, CENTER-BUTTON_WIDTH_LARGE/2, BAR_3-BUTTON_HEIGHT/2);                            /*Set its position*/
+  lv_obj_set_size(inits_btn, BUTTON_WIDTH_LARGE, BUTTON_HEIGHT);                          /*Set its size*/
+  lv_obj_add_event_cb(inits_btn, inits_btn_event_cb, LV_EVENT_ALL, NULL);           /*Assign a callback to the button*/
+
+  lv_obj_t * inits_label = lv_label_create(inits_btn);          /*Add a label to the button*/
+  lv_label_set_text(inits_label, "INITS");                     /*Set the labels text*/
+  lv_obj_center(inits_label);
+
+  state = MAIN_PAGE;
+}
+
+void main_page_listen()
+{
+  lv_timer_handler();
+  delay(5);
+}
+
+void results_init()
+{
+  // lv_obj_clean(lv_scr_act());
+  results_image(curr_num_results);
+
+  state = RESULTS_LISTEN;
+}
+
+void results_listen()
+{
+  if (chsc6x_is_pressed()){
+    lv_indev_data_t data;
+    chsc6x_read(&indev_drv, &data);
+    if (data.point.x <= SCREEN_WIDTH / 3){
+      Serial.println("Left button is pressed");
+      state = RESULTS_INIT;
+      if (curr_num_results == 0){
+        curr_num_results = imageCount - 1;
+      }
+      else{
+        curr_num_results--;
+      }
+    }
+    else if (data.point.x >= SCREEN_WIDTH / 3 * 2){
+      Serial.println("Right button is pressed");
+      state = RESULTS_INIT;
+      if (curr_num_results == imageCount - 1){
+        curr_num_results = 0;
+      }
+      else{
+        curr_num_results++;
+      }
+    }
+    else{
+      Serial.println("Back to main page");
+      state = MAIN_PAGE_INIT;
+    }
+  }
+  delay(5);
 }
 
 void results()
@@ -484,9 +638,98 @@ void results()
   return;
 }
 
-void inits()
+void inits_image(uint32_t num)
 {
-  return;
+  //  images
+  Serial.println("Enter inits_image");
+  char fileName[20];
+  sprintf(fileName, "/inits/%d.jpg", num);
+
+  uint16_t w = 0, h = 0;
+  uint32_t t = millis();
+  TJpgDec.getSdJpgSize(&w, &h, fileName);
+  Serial.print("Width = "); Serial.print(w); Serial.print(", height = "); Serial.println(h);
+
+  // Draw the image, top left at 0,0
+  TJpgDec.drawSdJpg(0, 0, fileName);
+
+  // How much time did rendering take
+  t = millis() - t;
+  Serial.print(t); Serial.println(" ms");
+
+  // Wait before drawing again
+  delay(500);
+}
+
+static void left_btn_event_cb(lv_event_t * e)
+{
+  lv_event_code_t code = lv_event_get_code(e);
+  if (code == LV_EVENT_CLICKED){
+    Serial.println("Left button is pressed");
+    state = INITS_INIT;
+    if (curr_num_inits == 0){
+      curr_num_inits = imageCount - 1;
+    }
+    else{
+      curr_num_inits--;
+    }
+  }
+}
+
+static void right_btn_event_cb(lv_event_t * e)
+{
+  lv_event_code_t code = lv_event_get_code(e);
+  if (code == LV_EVENT_CLICKED){
+    Serial.println("Right button is pressed");
+    state = INITS_INIT;
+    if (curr_num_inits == imageCount - 1){
+      curr_num_inits = 0;
+    }
+    else{
+      curr_num_inits++;
+    }
+  }
+}
+
+void inits_init()
+{
+  // lv_obj_clean(lv_scr_act());
+  inits_image(curr_num_inits);
+
+  state = INITS_LISTEN;
+}
+
+void inits_listen()
+{
+  if (chsc6x_is_pressed()){
+    lv_indev_data_t data;
+    chsc6x_read(&indev_drv, &data);
+    if (data.point.x <= SCREEN_WIDTH / 3){
+      Serial.println("Left button is pressed");
+      state = INITS_INIT;
+      if (curr_num_inits == 0){
+        curr_num_inits = imageCount - 1;
+      }
+      else{
+        curr_num_inits--;
+      }
+    }
+    else if (data.point.x >= SCREEN_WIDTH / 3 * 2){
+      Serial.println("Right button is pressed");
+      state = INITS_INIT;
+      if (curr_num_inits == imageCount - 1){
+        curr_num_inits = 0;
+      }
+      else{
+        curr_num_inits++;
+      }
+    }
+    else{
+      Serial.println("Back to main page");
+      state = MAIN_PAGE_INIT;
+    }
+  }
+  delay(5);
 }
 
 void take_photo()
@@ -545,13 +788,24 @@ void loop()
     switch (state)
     {
     case MAIN_PAGE:
-      main_page();
+      if (last_state != MAIN_PAGE){
+        main_page_init();
+      }
+      else{
+        main_page_listen();
+      }
       break;
-    case RESULTS:
-      results();
+    case RESULTS_INIT:
+      results_init();
       break;
-    case INITS:
-      inits();
+    case RESULTS_LISTEN:
+      results_listen();
+      break;
+    case INITS_INIT:
+      inits_init();
+      break;
+    case INITS_LISTEN:
+      inits_listen();
       break;
     case TAKE_PHOTO:
       take_photo();
@@ -566,5 +820,6 @@ void loop()
       confirm_print();
       break;
     }
+    last_state = state;
   }
 }
