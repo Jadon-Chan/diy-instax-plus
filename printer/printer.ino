@@ -34,30 +34,71 @@ GND<------->GND（一定要接上）
 */
 #include "HPD482.h"//打印机头文件
 #include "picture.h"//待打印的图片数据
+#include "SoftwareSerial.h"
 
 HPD482 printer=HPD482();//实例化打印机模块
 
-void setup() {
-  pinMode(13,OUTPUT);//LED
+SoftwareSerial mySerial(12, 13);
 
+int state = 0;
+// char * buff;
+char buff[38*40];
+
+char message_buff[20]; 
+void setup() {
   //*********************以下部分调用打印函数开始打印**********************************//
   // printer.Print_Lines(5,2);//打印5条虚线，虚线间距2mm
-  printer.Motor_Run(24,0);//步进电机旋转进纸24/8=3mm
+  // printer.Motor_Run(24,0);//步进电机旋转进纸24/8=3mm
   // printer.Print_SStr((u8*)"HPD482 test.YOU LI diy.https:\n//shop587795831.taobao.com/",12,6);//打印12号英文字符串
   // printer.Print_SStr((u8*)"HPD482 test.YOU LI diy.https://shop587795831.taobao.com/",16,8);//打印16号英文字符串
   // printer.Print_SStr((u8*)"HPD482 test.YOU LI diy.https://shop587795831.taobao.com/",24,16);//打印24号英文字符串
-  printer.Print_SetDeep(70);//设置打印颜色深度（用于修改打印颜色深度，不需要每次都设置，初始化里已有，此句可不要）
-  printer.Print_Img2Lcd(0,(u8*)Image,1);//在坐标0位置打印图片
-  printer.Print_SetDeep(35);//设置打印颜色深度（用于修改打印颜色深度，不需要每次都设置，初始化里已有，此句可不要）
-  printer.Print_Img2Lcd(10,(u8*)Image,1);//在坐标为20位置打印图片
-  printer.Print_SetDeep(1);//设置打印颜色深度（用于修改打印颜色深度，不需要每次都设置，初始化里已有，此句可不要）
-  printer.Print_Img2Lcd(20,(u8*)Image,1);//在坐标为44位置打印图片（超出打印范围部分会被裁掉）
+  // printer.Print_SetDeep(70);//设置打印颜色深度（用于修改打印颜色深度，不需要每次都设置，初始化里已有，此句可不要）
+  // printer.Print_Img2Lcd(0,(u8*)Image,1);//在坐标0位置打印图片
+  // printer.Print_SetDeep(35);//设置打印颜色深度（用于修改打印颜色深度，不需要每次都设置，初始化里已有，此句可不要）
+  // printer.Print_Img2Lcd(10,(u8*)Image,1);//在坐标为20位置打印图片
+  // printer.Print_SetDeep(1);//设置打印颜色深度（用于修改打印颜色深度，不需要每次都设置，初始化里已有，此句可不要）
+  // printer.Print_Img2Lcd(20,(u8*)Image,1);//在坐标为44位置打印图片（超出打印范围部分会被裁掉）
   //************************************打印结束**************************************//
+  // for (int j = 0; j < 40; j++){
+  //   for (int i = 0; i < 38; i++){
+  //     if (i <= 16){
+  //       buff[j*38+i] = '\xf0';
+  //     }
+  //     else if ( i >= 32){
+  //       buff[j*38+i] = '\xff';
+  //     }
+  //     else{
+  //       buff[j*38+i] = '\x0f';
+  //     }
+  //   }
+  // }
+  // printer.Print_Test(buffer);
+  Serial.begin(115200);
+  // while (!Serial) {
+    ; // wait for serial port to connect. Needed for Native USB only
+  // }
+  mySerial.begin(115200);
+  // buff = (char *) malloc(40 * 400);
+  Serial.println("Setup finished.");
 }
 
+int len = 0;
+int message_len = 0;
+
 void loop() {
-  digitalWrite(13,HIGH);
-  delay(300);
-  digitalWrite(13,LOW); 
-  delay(300);
+    while (mySerial.available())
+    {
+        buff[len++] = mySerial.read();
+        if (len >= 38*40 ){
+          Serial.println("read a part");
+          char mes[20];
+          sprintf(mes, "len is %d", len);
+          Serial.println(mes);
+          Serial.println("Begin print");
+          printer.Print_Picture(0, buff, 304, 40, 0);
+          Serial.println("Swith to state 0");
+          len = 0;
+          state = 0;
+        }
+    }
 }

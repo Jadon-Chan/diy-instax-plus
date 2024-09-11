@@ -185,6 +185,20 @@ void HPD482::Print_Control(u16 tim,u8 ctr)
 	}
 }
 
+void HPD482::Print_Test(u8 *pixlindat)
+{
+	for (int i = 0; i < 150; i++)
+	{
+		//走一步长
+		MOTOR_STEPF;pdelay_us(Motorspeed+ALIGN_DELAY);
+		pdelay_ms(SLOW_DELAY);
+		MOTOR_STEPF;
+		pdelay_ms(SLOW_DELAY);
+
+		Print_OneLine(pixlindat);
+	}
+}
+
 /*
 打印一行像素点阵
 输入参数：

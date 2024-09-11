@@ -70,6 +70,7 @@ public:
 	void Print_SetDeep(u8 deepcolor);
 	void Print_Stop(void);
 	void Print_Lines(u8 linesnum,u8 dist);
+	void Print_Test(u8 *data);
 #if IS_PRINT_PICT
 	void Print_Picture(u8 startx,u8 *picdata,u16 widthpix,u16 heightpix,u8 InEx);
 	void Print_Img2Lcd(u8 x,u8 *pic,u8 InEx);
