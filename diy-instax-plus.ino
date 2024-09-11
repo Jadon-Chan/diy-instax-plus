@@ -77,9 +77,9 @@ bool sd_sign = false;              // Check sd status
 bool wifi_sign = false;            // Check sd status
 
 HTTPClient http;
-const char img2img_server[] = "http://180.76.61.44:8000";
-String serverName = "180.76.61.44";
-uint16_t serverPort = 8000;
+const char img2img_server[] = "Set this as your server address and port";
+String serverName = "Set this as your server address";
+uint16_t serverPort = 8000; // Change to your server port
 WiFiClient client;
 
 int curr_num_inits = 0;
